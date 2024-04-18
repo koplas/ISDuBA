@@ -11,10 +11,10 @@
 set -e # to exit if a command in the script fails
 
 # Install base packages
-sudo apt install -y make bash curl sed tar
+sudo apt-get install -y make bash curl sed tar
 
 # Install Java
-sudo apt install -y openjdk-17-jre-headless
+sudo apt-get install -y openjdk-17-jre-headless
 
 # Install or update Go
 

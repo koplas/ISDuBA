@@ -10,7 +10,7 @@
 
 set -e # to exit if a command in the script fails
 
-sudo apt install -y unzip # needed to unzip the keycloak archive
+sudo apt-get install -y unzip # needed to unzip the keycloak archive
 
 
 if [ -d /opt/keycloak ] && sudo /opt/keycloak/bin/kc.sh --version | grep -q -F "Keycloak 24.0.1"; then
