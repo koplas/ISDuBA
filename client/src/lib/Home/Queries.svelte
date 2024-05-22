@@ -12,7 +12,7 @@
   import { appStore } from "$lib/store";
   import { onMount } from "svelte";
   import { request } from "$lib/utils";
-  import { Button, ButtonGroup, Input, Label } from "flowbite-svelte";
+  import { Button, ButtonGroup, Input, Label, Listgroup, P } from "flowbite-svelte";
   import ErrorMessage from "$lib/Errors/ErrorMessage.svelte";
   import { getErrorMessage } from "$lib/Errors/error";
   import AdvisoryTable from "$lib/Advisories/AdvisoryTable.svelte";
@@ -42,6 +42,16 @@
   let appliedAdvancedQuery = "";
   let isAdvancedQueryValid = true;
   let advancedQueryErrorMessage = "";
+  let isPlaceholderListOpen = false;
+  let placeholders = [
+    { parameter: "publisher", placeholder: `$publisher "<name>" =` },
+    { parameter: "cvss_v3_score", placeholder: `$cvss_v3_score <number> float >` }
+  ];
+  let autocompleteString = "";
+  $: autocompleteOptions = placeholders.filter((p) =>
+    `$${p.parameter}`.startsWith(`${autocompleteString}`)
+  );
+  let indexOfLastInput = 0;
 
   onMount(async () => {
     const response = await request("/api/queries", "GET");
@@ -74,8 +84,45 @@
     }
   };
 
+  const handleInput = (event: any) => {
+    indexOfLastInput = event.target.selectionStart;
+    if (event.inputType === "deleteContentBackward") {
+      autocompleteString = autocompleteString.slice(0, -1);
+      if (autocompleteString === "") isPlaceholderListOpen = false;
+      advancedQueryErrorMessage = "";
+      return;
+    }
+    if (event.data === " ") {
+      isPlaceholderListOpen = false;
+      autocompleteString = "";
+    }
+    if (isPlaceholderListOpen) {
+      autocompleteString = autocompleteString.concat(event.data);
+    }
+    const options = placeholders.filter((p) => {
+      return `$${p.parameter}`.startsWith(`${autocompleteString}`);
+    });
+    if (event.data === "$") {
+      isPlaceholderListOpen = true;
+      autocompleteString = "$";
+    }
+    if (options.length === 0) {
+      isPlaceholderListOpen = false;
+    }
+    testAdvancedQuery();
+  };
+
   const applyAdvancedQueries = () => {
     appliedAdvancedQuery = advancedQuery;
+  };
+
+  const selectPlaceholder = (e: any) => {
+    const firstPart = advancedQuery.slice(0, indexOfLastInput);
+    const insertion = e.detail.placeholder.replace(autocompleteString, "");
+    const secondPart = advancedQuery.slice(indexOfLastInput);
+    advancedQuery = `${firstPart}${insertion}${secondPart}`;
+    isPlaceholderListOpen = false;
+    testAdvancedQuery();
   };
 </script>
 
@@ -116,12 +163,31 @@
         <div>
           <Label for="advanced-parameters">Parameters:</Label>
           <div class="flex gap-x-2">
-            <Input
-              bind:value={advancedQuery}
-              on:input={testAdvancedQuery}
-              id="advanced-parameters"
-              type="text"
-            />
+            <div class="flex flex-col">
+              <Input
+                bind:value={advancedQuery}
+                on:input={handleInput}
+                id="advanced-parameters"
+                type="text"
+              />
+              {#if isPlaceholderListOpen}
+                <div class="relative">
+                  <Listgroup
+                    on:click={selectPlaceholder}
+                    class="absolute"
+                    active
+                    items={autocompleteOptions}
+                    let:index
+                  >
+                    <div class="flex">
+                      <P weight="bold">{autocompleteString}</P><P
+                        >{autocompleteOptions[index].placeholder.replace(autocompleteString, "")}</P
+                      >
+                    </div>
+                  </Listgroup>
+                </div>
+              {/if}
+            </div>
             <Button on:click={applyAdvancedQueries} disabled={!isAdvancedQueryValid}>Apply</Button>
           </div>
         </div>
