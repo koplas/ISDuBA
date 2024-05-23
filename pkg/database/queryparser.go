@@ -38,6 +38,11 @@ const (
 	search
 	ilike
 	ilikePID
+	now
+	add
+	sub
+	mul
+	div
 )
 
 type valueType int
@@ -49,6 +54,7 @@ const (
 	stringType
 	timeType
 	workflowType
+	durationType
 )
 
 // Parser helps parsing database queries,
@@ -64,13 +70,14 @@ type Expr struct {
 	exprType  exprType
 	valueType valueType
 
-	stringValue string
-	intValue    int64
-	floatValue  float64
-	timeValue   time.Time
-	boolValue   bool
-	langValue   string
-	alias       string
+	stringValue   string
+	intValue      int64
+	floatValue    float64
+	timeValue     time.Time
+	boolValue     bool
+	langValue     string
+	durationValue time.Duration
+	alias         string
 
 	children []*Expr
 }
@@ -80,6 +87,39 @@ type documentColumn struct {
 	valueType      valueType
 	advisoryOnly   bool
 	projectionOnly bool
+}
+
+type binaryCompat struct {
+	left     valueType
+	operator exprType
+	right    valueType
+}
+
+var binaryCompatMatrix = map[binaryCompat]valueType{
+	{boolType, and, boolType}:         boolType,
+	{boolType, or, boolType}:          boolType,
+	{intType, add, intType}:           intType,
+	{intType, sub, intType}:           intType,
+	{intType, mul, intType}:           intType,
+	{intType, div, intType}:           intType,
+	{intType, add, floatType}:         floatType,
+	{intType, sub, floatType}:         floatType,
+	{intType, mul, floatType}:         floatType,
+	{intType, div, floatType}:         floatType,
+	{floatType, add, intType}:         floatType,
+	{floatType, sub, intType}:         floatType,
+	{floatType, mul, intType}:         floatType,
+	{floatType, div, intType}:         floatType,
+	{timeType, add, durationType}:     timeType,
+	{timeType, sub, durationType}:     timeType,
+	{durationType, add, timeType}:     timeType,
+	{durationType, sub, timeType}:     timeType,
+	{durationType, add, durationType}: durationType,
+	{durationType, sub, durationType}: durationType,
+	{durationType, mul, intType}:      durationType,
+	{durationType, div, intType}:      durationType,
+	{durationType, mul, floatType}:    durationType,
+	{durationType, div, floatType}:    durationType,
 }
 
 // String implements [fmt.Stringer].
@@ -97,6 +137,8 @@ func (vt valueType) String() string {
 		return "time"
 	case workflowType:
 		return "workflow"
+	case durationType:
+		return "duration"
 	default:
 		return fmt.Sprintf("unknown value type %d", vt)
 	}
@@ -157,6 +199,16 @@ func (et exprType) String() string {
 		return "ilike"
 	case ilikePID:
 		return "ilikepid"
+	case now:
+		return "now"
+	case add:
+		return "+"
+	case sub:
+		return "-"
+	case mul:
+		return "*"
+	case div:
+		return "/"
 	default:
 		return fmt.Sprintf("unknown expression type %d", et)
 	}
@@ -294,7 +346,7 @@ func CreateQuerySQL(
 		sql += " ORDER BY " + order
 	}
 
-	if limit > 0 {
+	if limit >= 0 {
 		sql += " LIMIT " + strconv.FormatInt(limit, 10)
 	}
 	if offset > 0 {
@@ -429,6 +481,8 @@ func (e *Expr) Where() (string, []any, map[string]string) {
 			b.WriteString("boolean")
 		case workflowType:
 			b.WriteString("workflow")
+		case durationType:
+			b.WriteString("interval")
 		}
 		b.WriteByte(')')
 	}
@@ -458,6 +512,8 @@ func (e *Expr) Where() (string, []any, map[string]string) {
 			b.WriteByte('\'')
 			b.WriteString(e.stringValue)
 			b.WriteString("'::workflow")
+		case durationType:
+			fmt.Fprintf(&b, "'%.2f seconds'::interval", e.durationValue.Seconds())
 		}
 	}
 
@@ -483,6 +539,10 @@ func (e *Expr) Where() (string, []any, map[string]string) {
 		b.WriteString(column)
 	}
 
+	writeNow := func(_ *Expr) {
+		b.WriteString("current_timestamp")
+	}
+
 	writeILike := func(e *Expr) {
 		b.WriteByte('(')
 		recurse(e.children[0])
@@ -499,7 +559,7 @@ func (e *Expr) Where() (string, []any, map[string]string) {
 			`SELECT * FROM documents_texts dts JOIN product_ids ` +
 			`ON product_ids.num = dts.num JOIN unique_texts ON dts.txt_id = unique_texts.id ` +
 			`WHERE dts.documents_id = documents.id AND ` +
-			`dts.txt ILIKE `)
+			`unique_texts.txt ILIKE `)
 		recurse(e.children[0])
 		b.WriteByte(')')
 		/*
@@ -560,6 +620,16 @@ func (e *Expr) Where() (string, []any, map[string]string) {
 			writeILike(e)
 		case ilikePID:
 			writeILikePID(e)
+		case now:
+			writeNow(e)
+		case add:
+			writeBinary(e, "+")
+		case sub:
+			writeBinary(e, "-")
+		case mul:
+			writeBinary(e, "*")
+		case div:
+			writeBinary(e, "/")
 		}
 		b.WriteByte(')')
 	}
@@ -620,14 +690,14 @@ func (st *stack) pushString(s string) {
 func (e *Expr) checkValueType(vt valueType) {
 	if e.valueType != vt {
 		panic(parseError(
-			fmt.Sprintf("value type mismatch: %s %s", e.valueType, vt)))
+			fmt.Sprintf("value type mismatch: %q %q", e.valueType, vt)))
 	}
 }
 
 func (e *Expr) checkExprType(et exprType) {
 	if e.exprType != et {
 		panic(parseError(
-			fmt.Sprintf("expression type mismatch: %s %s", e.exprType, et)))
+			fmt.Sprintf("expression type mismatch: %q %q", e.exprType, et)))
 	}
 }
 
@@ -644,11 +714,19 @@ func (st *stack) not() {
 func (st *stack) binary(et exprType) {
 	right := st.pop()
 	left := st.pop()
-	left.checkValueType(boolType)
-	right.checkValueType(boolType)
+	resultValueType, ok := binaryCompatMatrix[binaryCompat{
+		left:     left.valueType,
+		operator: et,
+		right:    right.valueType,
+	}]
+	if !ok {
+		panic(parseError(
+			fmt.Sprintf("invalid binary operation: %q %q %q",
+				left.valueType, et, right.valueType)))
+	}
 	st.push(&Expr{
 		exprType:  et,
-		valueType: boolType,
+		valueType: resultValueType,
 		children:  []*Expr{left, right},
 	})
 }
@@ -682,6 +760,14 @@ func parseInt(s string) int64 {
 		panic(parseError(fmt.Sprintf("%q is not an int: %v", s, err)))
 	}
 	return v
+}
+
+func parseDuration(s string) time.Duration {
+	duration, err := time.ParseDuration(s)
+	if err != nil {
+		panic(parseError(fmt.Sprintf("cannot parse %q as duration", s)))
+	}
+	return duration
 }
 
 func (st *stack) float() {
@@ -897,6 +983,37 @@ func (st *stack) ilikePID() {
 	})
 }
 
+func (st *stack) now() {
+	st.push(&Expr{
+		exprType:  now,
+		valueType: timeType,
+	})
+}
+
+func (st *stack) duration() {
+	if st.top().valueType == durationType {
+		return
+	}
+	switch e := st.pop(); e.exprType {
+	case cnst:
+		switch e.valueType {
+		case stringType:
+			st.push(&Expr{
+				exprType:      cnst,
+				valueType:     durationType,
+				durationValue: parseDuration(e.stringValue),
+			})
+		default:
+			panic(parseError(
+				fmt.Sprintf("value type %q is not supported as duration",
+					e.valueType)))
+		}
+	default:
+		panic(parseError(
+			fmt.Sprintf("type %q is not supported as duration", e.exprType)))
+	}
+}
+
 var aliasRe = regexp.MustCompile(`[a-zA-Z][a-zA-Z_0-9]*`)
 
 func validAlias(s string) {
@@ -1022,6 +1139,18 @@ func (p *Parser) parse(input string) (*Expr, error) {
 			st.ilike()
 		case "ilikepid":
 			st.ilikePID()
+		case "now":
+			st.now()
+		case "duration":
+			st.duration()
+		case "+":
+			st.binary(add)
+		case "-":
+			st.binary(sub)
+		case "/":
+			st.binary(div)
+		case "*":
+			st.binary(mul)
 		default:
 			if strings.HasPrefix(field, "$") {
 				st.access(field[1:], p.Advisory)

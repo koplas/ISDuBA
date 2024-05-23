@@ -25,6 +25,8 @@
   import { getErrorMessage } from "$lib/Errors/error";
   import { push } from "svelte-spa-router";
   import { Modal } from "flowbite-svelte";
+  import { ADMIN, isRoleIncluded } from "$lib/permissions";
+  import { appStore } from "$lib/store";
   let deleteModalOpen = false;
 
   const resetQueryToDelete = () => {
@@ -65,7 +67,7 @@
   const swapQueryNum = async (query1: any, query2: any) => {
     loading = true;
     let formData = new FormData();
-    let TEMP_NUM = queries.length + 1;
+    let TEMP_NUM = 1_000_000;
     formData.append("num", `${TEMP_NUM}`);
     const response1 = await request(`/api/queries/${query1.id}`, "PUT", formData);
     if (response1.ok) {
@@ -140,7 +142,7 @@
 >
 {#if queries.length > 0}
   <div class="flex flex-row">
-    <div class="mb-12 w-1/3">
+    <div class="mb-12 w-fit">
       <Table hoverable={true} noborder={true}>
         <TableHead class="cursor-pointer">
           <TableHeadCell padding={tablePadding}></TableHeadCell>
@@ -176,30 +178,32 @@
               on:focus={() => {}}
               class="cursor-pointer"
               ><TableBodyCell {tdClass}
-                ><div
-                  class:invisible={hoveredQuery !== index}
-                  class:w-1={true}
-                  class:flex={true}
-                  class:flex-col={true}
-                >
-                  <button
-                    class="h-4"
-                    on:click|stopPropagation={() => {
-                      promote();
-                    }}
+                >{#if !(query.global && !isRoleIncluded(appStore.getRoles(), [ADMIN]))}
+                  <div
+                    class:invisible={hoveredQuery !== index}
+                    class:w-1={true}
+                    class:flex={true}
+                    class:flex-col={true}
                   >
-                    <i class="bx bxs-up-arrow-circle"></i>
-                  </button>
-                  <button
-                    on:click|stopPropagation={() => {
-                      demote();
-                    }}
-                    class="h-4"
-                  >
-                    <i class="bx bxs-down-arrow-circle"></i>
-                  </button>
-                </div></TableBodyCell
-              >
+                    <button
+                      class="h-4"
+                      on:click|stopPropagation={() => {
+                        promote();
+                      }}
+                    >
+                      <i class="bx bxs-up-arrow-circle"></i>
+                    </button>
+                    <button
+                      on:click|stopPropagation={() => {
+                        demote();
+                      }}
+                      class="h-4"
+                    >
+                      <i class="bx bxs-down-arrow-circle"></i>
+                    </button>
+                  </div>
+                {/if}
+              </TableBodyCell>
               <TableBodyCell {tdClass}>
                 <span>{query.name ?? "-"}</span>
               </TableBodyCell>

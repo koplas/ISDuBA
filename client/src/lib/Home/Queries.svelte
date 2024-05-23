@@ -17,31 +17,39 @@
   import { getErrorMessage } from "$lib/Errors/error";
   import AdvisoryTable from "$lib/Advisories/AdvisoryTable.svelte";
 
-  let defaultQueries = [
-    {
-      name: "New advisories",
-      query: "$state new workflow =",
-      advisories: true,
-      columns: [
-        "id",
-        "publisher",
-        "title",
-        "tracking_id",
-        "version",
-        "cvss_v2_score",
-        "cvss_v3_score"
-      ]
-    }
-  ];
   let queries: any[] = [];
+  $: sortedQueries = queries.sort((a: any, b: any) => {
+    if (a.global && !b.global) {
+      return -1;
+    } else if (!a.global && b.global) {
+      return 1;
+    }
+    return 0;
+  });
   let selectedIndex = 0;
-  let pressedButtonClass = "bg-gray-200 hover:bg-gray-100";
   let errorMessage = "";
   let isAdvancedParametersEnabled = false;
   let advancedQuery = "";
   let appliedAdvancedQuery = "";
   let isAdvancedQueryValid = true;
   let advancedQueryErrorMessage = "";
+  let globalQueryButtonColor = "primary";
+  let defaultQueryButtonClass = "flex flex-col p-0 focus:text-black hover:text-black";
+  let queryButtonClass = "bg-white hover:bg-gray-100";
+  let pressedQueryButtonClass = "bg-gray-200 text-black hover:!bg-gray-100";
+  let globalQueryButtonClass = `border-${globalQueryButtonColor}-500 hover:!bg-${globalQueryButtonColor}-500 hover:!text-white`;
+  let pressedGlobalQueryButtonClass = `border-white bg-${globalQueryButtonColor}-600 focus:text-white text-white hover:!bg-${globalQueryButtonColor}-500 hover:text-white`;
+
+  const getClass = (isGlobal: boolean, isPressed: boolean) => {
+    const addition = isGlobal
+      ? isPressed
+        ? pressedGlobalQueryButtonClass
+        : globalQueryButtonClass
+      : isPressed
+        ? pressedQueryButtonClass
+        : queryButtonClass;
+    return `${defaultQueryButtonClass} ${addition}`;
+  };
   let isPlaceholderListOpen = false;
   let placeholders = [
     { parameter: "publisher", placeholder: `$publisher "<name>" =` },
@@ -56,7 +64,7 @@
   onMount(async () => {
     const response = await request("/api/queries", "GET");
     if (response.ok) {
-      queries = [...defaultQueries, ...response.content];
+      queries = response.content;
     } else if (response.error) {
       errorMessage = `Could not load user defined queries. ${getErrorMessage(response.error)}`;
     }
@@ -130,23 +138,13 @@
   {#if queries.length > 0}
     <div class="mb-4 flex gap-x-4">
       <ButtonGroup>
-        <Button
-          on:click={() => selectQuery(0)}
-          class={`${0 === selectedIndex ? pressedButtonClass : ""} flex flex-col p-0`}
-        >
-          <span title="New advisories" class="m-2 h-full w-full">New advisories</span>
-        </Button>
-      </ButtonGroup>
-      <ButtonGroup>
-        {#each queries as query, index}
-          {#if index > defaultQueries.length - 1}
-            <Button
-              on:click={() => selectQuery(index)}
-              class={`${index + defaultQueries.length - 1 === selectedIndex ? pressedButtonClass : ""} flex flex-col p-0`}
-            >
-              <span title={query.description} class="m-2 h-full w-full">{query.name}</span>
-            </Button>
-          {/if}
+        {#each sortedQueries as query, index}
+          <Button
+            on:click={() => selectQuery(index)}
+            class={getClass(query.global, index === selectedIndex)}
+          >
+            <span title={query.description} class="m-2 h-full w-full">{query.name}</span>
+          </Button>
         {/each}
       </ButtonGroup>
       <Button on:click={toggleAdvancedParameters} color="light">
