@@ -12,7 +12,7 @@
   import { appStore } from "$lib/store";
   import { onMount } from "svelte";
   import { request } from "$lib/utils";
-  import { Button, ButtonGroup, Input, Label, Listgroup, P } from "flowbite-svelte";
+  import { Button, ButtonGroup, Input, Label, Listgroup } from "flowbite-svelte";
   import ErrorMessage from "$lib/Errors/ErrorMessage.svelte";
   import { getErrorMessage } from "$lib/Errors/error";
   import AdvisoryTable from "$lib/Advisories/AdvisoryTable.svelte";
@@ -52,13 +52,20 @@
   };
   let isPlaceholderListOpen = false;
   let placeholders = [
+    {
+      parameter: "current_release_date",
+      placeholder: "$current_release_date now <hours>h duration - >="
+    },
+    { parameter: "cvss_v3_score", placeholder: "$cvss_v3_score <number> float >" },
     { parameter: "publisher", placeholder: `$publisher "<name>" =` },
-    { parameter: "cvss_v3_score", placeholder: `$cvss_v3_score <number> float >` }
+    { parameter: "state", placeholder: "$state <state> workflow =" },
+    { parameter: "title", placeholder: `$title "<title>" =` }
   ];
   let autocompleteString = "";
   $: autocompleteOptions = placeholders.filter((p) =>
     `$${p.parameter}`.startsWith(`${autocompleteString}`)
   );
+  let focusedAutocompleteEntry = 0;
   let indexOfLastInput = 0;
 
   onMount(async () => {
@@ -117,16 +124,43 @@
     if (options.length === 0) {
       isPlaceholderListOpen = false;
     }
+    if (focusedAutocompleteEntry > autocompleteOptions.length - 1) {
+      focusedAutocompleteEntry = 0;
+    }
+    if (focusedAutocompleteEntry > options.length - 1) {
+      focusedAutocompleteEntry = 0;
+    }
     testAdvancedQuery();
+  };
+
+  const handleKeyDown = (event: any) => {
+    if (isPlaceholderListOpen && ["ArrowDown", "ArrowUp"].includes(event.key))
+      event.preventDefault();
+    if (!isPlaceholderListOpen) return;
+    if (event.key === "ArrowDown") {
+      if (focusedAutocompleteEntry === autocompleteOptions.length - 1) {
+        focusedAutocompleteEntry = 0;
+      } else {
+        focusedAutocompleteEntry++;
+      }
+    } else if (event.key === "ArrowUp") {
+      if (focusedAutocompleteEntry === 0) {
+        focusedAutocompleteEntry = autocompleteOptions.length - 1;
+      } else {
+        focusedAutocompleteEntry--;
+      }
+    } else if (event.key === "Enter") {
+      selectPlaceholder(autocompleteOptions[focusedAutocompleteEntry].placeholder);
+    }
   };
 
   const applyAdvancedQueries = () => {
     appliedAdvancedQuery = advancedQuery;
   };
 
-  const selectPlaceholder = (e: any) => {
+  const selectPlaceholder = (placeholder: string) => {
     const firstPart = advancedQuery.slice(0, indexOfLastInput);
-    const insertion = e.detail.placeholder.replace(autocompleteString, "");
+    const insertion = placeholder.replace(autocompleteString, "");
     const secondPart = advancedQuery.slice(indexOfLastInput);
     advancedQuery = `${firstPart}${insertion}${secondPart}`;
     isPlaceholderListOpen = false;
@@ -162,25 +196,32 @@
           <Label for="advanced-parameters">Parameters:</Label>
           <div class="flex gap-x-2">
             <div class="flex flex-col">
-              <Input
-                bind:value={advancedQuery}
-                on:input={handleInput}
-                id="advanced-parameters"
-                type="text"
-              />
+              <Input let:props>
+                <input
+                  id="advanced-parameters"
+                  on:input={handleInput}
+                  on:keydown={handleKeyDown}
+                  bind:value={advancedQuery}
+                  {...props}
+                  type="text"
+                />
+              </Input>
               {#if isPlaceholderListOpen}
                 <div class="relative">
                   <Listgroup
-                    on:click={selectPlaceholder}
-                    class="absolute"
+                    on:click={(e) => selectPlaceholder(e.detail.placeholder)}
+                    class="absolute z-10 min-w-80"
                     active
                     items={autocompleteOptions}
                     let:index
                   >
-                    <div class="flex">
-                      <P weight="bold">{autocompleteString}</P><P
-                        >{autocompleteOptions[index].placeholder.replace(autocompleteString, "")}</P
-                      >
+                    <div
+                      class={`flex ${index === focusedAutocompleteEntry ? "text-primary-700" : ""}`}
+                    >
+                      <span class="font-bold">{autocompleteString}</span>
+                      <span class="whitespace-nowrap">
+                        {autocompleteOptions[index].placeholder.replace(autocompleteString, "")}
+                      </span>
                     </div>
                   </Listgroup>
                 </div>
