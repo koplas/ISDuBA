@@ -154,6 +154,10 @@
     }
   };
 
+  const handleBlur = () => {
+    isPlaceholderListOpen = false;
+  };
+
   const applyAdvancedQueries = () => {
     appliedAdvancedQuery = advancedQuery;
   };
@@ -201,6 +205,7 @@
                   id="advanced-parameters"
                   on:input={handleInput}
                   on:keydown={handleKeyDown}
+                  on:blur={handleBlur}
                   bind:value={advancedQuery}
                   {...props}
                   type="text"
