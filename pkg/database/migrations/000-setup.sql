@@ -195,6 +195,26 @@ CREATE TABLE comments (
     message      varchar(10000)
 );
 
+CREATE TABLE mentioned (
+    who         varchar NOT NULL,
+    comments_id int NOT NULL REFERENCES comments(id) ON DELETE CASCADE,
+    UNIQUE (who, comments_id)
+);
+
+CREATE INDEX ON mentioned(comments_id);
+
+CREATE FUNCTION update_mentioned() RETURNS trigger AS $$
+    BEGIN
+        DELETE FROM mentioned WHERE comments_id = NEW.id;
+        INSERT INTO mentioned (who, comments_id)
+            SELECT regexp_matches(NEW.message, '@([\w\d_]+)', 'g'), NEW.id
+            ON CONFLICT DO NOTHING;
+    END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER mentioned_update AFTER INSERT OR UPDATE ON comments
+    FOR EACH ROW EXECUTE FUNCTION update_mentioned();
+
 CREATE TYPE events AS ENUM (
     'import_document', 'delete_document',
     'state_change',
@@ -241,3 +261,4 @@ GRANT INSERT, DELETE, SELECT, UPDATE ON unique_texts    TO {{ .User | sanitize }
 GRANT INSERT, DELETE, SELECT, UPDATE ON comments        TO {{ .User | sanitize }};
 GRANT INSERT, DELETE, SELECT, UPDATE ON events_log      TO {{ .User | sanitize }};
 GRANT INSERT, DELETE, SELECT, UPDATE ON stored_queries  TO {{ .User | sanitize }};
+GRANT INSERT, DELETE, SELECT, UPDATE ON mentioned       TO {{ .User | sanitize }};
