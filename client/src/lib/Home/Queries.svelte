@@ -28,7 +28,7 @@
   });
   let selectedIndex = 0;
   let errorMessage = "";
-  let isAdvancedParametersEnabled = false;
+  let isAdvancedParametersEnabled = true;
   let advancedQuery = "";
   let appliedAdvancedQuery = "";
   let isAdvancedQueryValid = true;
@@ -50,23 +50,23 @@
         : queryButtonClass;
     return `${defaultQueryButtonClass} ${addition}`;
   };
-  let isPlaceholderListOpen = false;
-  let placeholders = [
+  let isSuggestionListOpen = false;
+  let indexOfSelectedSuggestion = -1;
+  let suggestions = [
     {
       parameter: "current_release_date",
-      placeholder: "$current_release_date now <hours>h duration - >="
+      placeholder: ["$current_release_date now <hours>h duration - >="]
     },
-    { parameter: "cvss_v3_score", placeholder: "$cvss_v3_score <number> float >" },
-    { parameter: "publisher", placeholder: `$publisher "<name>" =` },
-    { parameter: "state", placeholder: "$state <state> workflow =" },
-    { parameter: "title", placeholder: `$title "<title>" =` }
+    { parameter: "cvss_v3_score", placeholder: ["$cvss_v3_score <number> float >"] },
+    { parameter: "publisher", placeholder: [`$publisher "<name>" =`] },
+    { parameter: "state", placeholder: ["$state <state> workflow ="] },
+    { parameter: "title", placeholder: [`$title "<title>" =`] }
   ];
   let autocompleteString = "";
-  $: autocompleteOptions = placeholders.filter((p) =>
+  $: autocompleteOptions = suggestions.filter((p) =>
     `$${p.parameter}`.startsWith(`${autocompleteString}`)
   );
-  let focusedAutocompleteEntry = 0;
-  let indexOfLastInput = 0;
+  let indexOfFocusedAutocompleteEntry = 0;
 
   onMount(async () => {
     const response = await request("/api/queries", "GET");
@@ -97,78 +97,76 @@
     if (!result.ok) {
       advancedQueryErrorMessage = result.content;
     }
+    return result;
   };
 
   const handleInput = (event: any) => {
-    indexOfLastInput = event.target.selectionStart;
-    if (event.inputType === "deleteContentBackward") {
-      autocompleteString = autocompleteString.slice(0, -1);
-      if (autocompleteString === "") isPlaceholderListOpen = false;
-      advancedQueryErrorMessage = "";
+    const value = (<HTMLInputElement>document.getElementById("advanced-parameters"))?.value;
+    const selectionStart = event.target.selectionStart;
+
+    if (event.data === " " || value === "") {
+      isSuggestionListOpen = false;
+      autocompleteString = "";
       return;
     }
-    if (event.data === " ") {
-      isPlaceholderListOpen = false;
+
+    const lastIndex = value.lastIndexOf("$", selectionStart);
+    if (event.data === "$") {
       autocompleteString = "";
     }
-    if (isPlaceholderListOpen) {
-      autocompleteString = autocompleteString.concat(event.data);
+    if (lastIndex > -1) {
+      autocompleteString = value.substring(lastIndex, selectionStart + 1);
     }
-    const options = placeholders.filter((p) => {
+    const options = suggestions.filter((p) => {
       return `$${p.parameter}`.startsWith(`${autocompleteString}`);
     });
-    if (event.data === "$") {
-      isPlaceholderListOpen = true;
-      autocompleteString = "$";
+    isSuggestionListOpen = autocompleteString.length > 0 && options.length > 0;
+
+    if (indexOfFocusedAutocompleteEntry > autocompleteOptions.length - 1) {
+      indexOfFocusedAutocompleteEntry = 0;
     }
-    if (options.length === 0) {
-      isPlaceholderListOpen = false;
+    if (indexOfFocusedAutocompleteEntry > options.length - 1) {
+      indexOfFocusedAutocompleteEntry = 0;
     }
-    if (focusedAutocompleteEntry > autocompleteOptions.length - 1) {
-      focusedAutocompleteEntry = 0;
-    }
-    if (focusedAutocompleteEntry > options.length - 1) {
-      focusedAutocompleteEntry = 0;
-    }
-    testAdvancedQuery();
   };
 
   const handleKeyDown = (event: any) => {
-    if (isPlaceholderListOpen && ["ArrowDown", "ArrowUp"].includes(event.key))
+    if (isSuggestionListOpen && ["ArrowDown", "ArrowUp"].includes(event.key))
       event.preventDefault();
-    if (!isPlaceholderListOpen) return;
+    if (!isSuggestionListOpen) return;
     if (event.key === "ArrowDown") {
-      if (focusedAutocompleteEntry === autocompleteOptions.length - 1) {
-        focusedAutocompleteEntry = 0;
+      if (indexOfFocusedAutocompleteEntry === autocompleteOptions.length - 1) {
+        indexOfFocusedAutocompleteEntry = 0;
       } else {
-        focusedAutocompleteEntry++;
+        indexOfFocusedAutocompleteEntry++;
       }
     } else if (event.key === "ArrowUp") {
-      if (focusedAutocompleteEntry === 0) {
-        focusedAutocompleteEntry = autocompleteOptions.length - 1;
+      if (indexOfFocusedAutocompleteEntry === 0) {
+        indexOfFocusedAutocompleteEntry = autocompleteOptions.length - 1;
       } else {
-        focusedAutocompleteEntry--;
+        indexOfFocusedAutocompleteEntry--;
       }
     } else if (event.key === "Enter") {
-      selectPlaceholder(autocompleteOptions[focusedAutocompleteEntry].placeholder);
+      selectPlaceholder(suggestions[indexOfFocusedAutocompleteEntry]);
     }
   };
 
-  const handleBlur = () => {
-    isPlaceholderListOpen = false;
+  const handleBlur = (event: any) => {
+    if (event.originalTarget.id !== "advanced-parameters") isSuggestionListOpen = false;
   };
 
-  const applyAdvancedQueries = () => {
-    appliedAdvancedQuery = advancedQuery;
+  const applyAdvancedQueries = async () => {
+    const result = await testAdvancedQuery();
+    if (result.ok) appliedAdvancedQuery = advancedQuery;
   };
 
-  const selectPlaceholder = (placeholder: string) => {
-    const firstPart = advancedQuery.slice(0, indexOfLastInput);
-    const insertion = placeholder.replace(autocompleteString, "");
-    const secondPart = advancedQuery.slice(indexOfLastInput);
-    advancedQuery = `${firstPart}${insertion}${secondPart}`;
-    isPlaceholderListOpen = false;
-    testAdvancedQuery();
+  const selectPlaceholder = (suggestion: any) => {
+    console.log("suggestion", suggestion);
+    indexOfSelectedSuggestion = suggestions.findIndex(
+      (s) => s.parameter === suggestion.parameter && s.placeholder === suggestion.placeholder
+    );
+    indexOfFocusedAutocompleteEntry = 0;
+    //isSuggestionListOpen = false;
   };
 </script>
 
@@ -211,22 +209,36 @@
                   type="text"
                 />
               </Input>
-              {#if isPlaceholderListOpen}
+              {#if isSuggestionListOpen}
                 <div class="relative">
                   <Listgroup
-                    on:click={(e) => selectPlaceholder(e.detail.placeholder)}
-                    class="absolute z-10 min-w-80"
                     active
-                    items={autocompleteOptions}
+                    items={indexOfSelectedSuggestion !== -1
+                      ? autocompleteOptions[indexOfSelectedSuggestion].placeholder
+                      : autocompleteOptions}
+                    on:click={(e) => {
+                      selectPlaceholder(e.detail);
+                    }}
+                    class="absolute z-10 min-w-80"
                     let:index
                   >
                     <div
-                      class={`flex ${index === focusedAutocompleteEntry ? "text-primary-700" : ""}`}
+                      class={`flex items-center ${index === indexOfFocusedAutocompleteEntry ? "text-primary-700" : ""}`}
                     >
-                      <span class="font-bold">{autocompleteString}</span>
-                      <span class="whitespace-nowrap">
-                        {autocompleteOptions[index].placeholder.replace(autocompleteString, "")}
-                      </span>
+                      {#if indexOfSelectedSuggestion !== -1}
+                        <span
+                          >{autocompleteOptions[indexOfSelectedSuggestion].placeholder[index]}</span
+                        >
+                      {:else}
+                        <span class="font-bold">{autocompleteString}</span>
+                        <span class="whitespace-nowrap">
+                          {autocompleteOptions[index].parameter.replace(
+                            autocompleteString.replace("$", ""),
+                            ""
+                          )}
+                        </span>
+                        <i class="bx bx-chevron-right"></i>
+                      {/if}
                     </div>
                   </Listgroup>
                 </div>
