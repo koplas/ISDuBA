@@ -40,10 +40,15 @@ jobs:
       - name: Build
         run: make dist
 
-      - name: Generate SBOM
+      - name: Generate SPDX SBOM
         uses: anchore/sbom-action@v0
         with:
-          format: ["spdx-json", cyclonedx-json]
+          format: spdx-json
+
+      - name: Generate CycloneDX SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          format: cyclonedx-json
 
       - name: Upload release assets
         uses: softprops/action-gh-release@v1
