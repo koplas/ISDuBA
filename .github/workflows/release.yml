@@ -12,7 +12,7 @@ on:
     types: [created]
 
 jobs:
-  releases-matrix:
+  release:
     name: Release application
     runs-on: ubuntu-latest
     env:
@@ -42,6 +42,8 @@ jobs:
 
       - name: Generate SBOM
         uses: anchore/sbom-action@v0
+        with:
+          format: ["spdx-json", cyclonedx-json]
 
       - name: Upload release assets
         uses: softprops/action-gh-release@v1
