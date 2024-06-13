@@ -19,6 +19,8 @@ jobs:
       PUBLIC_KEYCLOAK_URL: "http://localhost:8080"
       PUBLIC_KEYCLOAK_REALM: "isduba"
       PUBLIC_KEYCLOAK_CLIENTID: "auth"
+      SYFT_GOLANG_SEARCH_LOCAL_MOD_CACHE_LICENSES: true
+      SYFT_GOLANG_SEARCH_REMOTE_LICENSES: true
 
     steps:
       - name: Checkout
