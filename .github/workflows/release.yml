@@ -42,8 +42,6 @@ jobs:
 
       - name: Generate SBOM
         uses: anchore/sbom-action@v0
-        with:
-          sbom-artifact-match: ".*\\.spdx$"
 
       - name: Upload release assets
         uses: softprops/action-gh-release@v1
